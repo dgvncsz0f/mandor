@@ -43,6 +43,9 @@ namespace mandor
         throw(std::runtime_error("unsigned number needed"));
       if (! std::numeric_limits<T>::is_integer)
         throw(std::runtime_error("integer number required"));
+      // make sure addition will not overflow
+      if ((_base-1) > (std::numeric_limits<T>::max()-_base))
+        throw(std::runtime_error("2base must not exceed T_max [addition]"));
     }
 
     bignum_base(const bignum_base<T> &a) :
@@ -61,7 +64,7 @@ namespace mandor
     { return(_digits[k]); }
 
     inline
-    void sum(bignum_base<T> &r, const bignum_base<T> &o) const
+    void plus(bignum_base<T> &r, const bignum_base<T> &o) const
     {
       if (_base != o._base)
         throw(std::runtime_error("numbers must have same base"));
@@ -77,8 +80,12 @@ namespace mandor
       {
         T a = (k<la ? _digits[k]   : 0);
         T b = (k<lb ? o._digits[k] : 0);
+        // N.B.: C++ already does arithmetic modulo N, making the
+        //       operator % unecessary. However, we might be using a
+        //       base /= T_max.
         T d = (a + (b + carry)) % _base;
         r._digits.push_back(d);
+        // TODO: use add-with-carry -like instruction
         carry = (d>=a && d>=(b+carry)) ? 0 : 1;
       }
       if (carry)
@@ -98,6 +105,7 @@ namespace mandor
     { _digits.push_back(d); }
 
   private:
+    // LITTLE ENDIAN
     std::vector<T> _digits;
     T _base;
   };
@@ -130,13 +138,21 @@ namespace mandor
       return(*this);
     }
 
-    bignum operator+(const bignum &o)
+    bignum operator+(const bignum &o) const
     {
       bignum r;
-      sum(r, o);
+      plus(r, o);
       return(r);
     }
 
+    std::string tostring_() const
+    {
+      std::ostringstream s;
+      tostring(s);
+      return(s.str());
+    }
+
+    // N.B.: This only works when the base is in the form 10^k.
     void tostring(std::ostringstream &s) const
     {
       s.fill('0');
@@ -152,13 +168,8 @@ namespace mandor
       }
     }
 
-    std::string tostring_() const
-    {
-      std::ostringstream s;
-      tostring(s);
-      return(s.str());
-    }
-
+  private:
+    // N.B.: This only works when the base is in the form 10^k.
     void from_string(const std::string &n)
     {
       for (int k_=n.size(); k_>0; k_-=BN_E)
