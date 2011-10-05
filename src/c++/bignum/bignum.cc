@@ -1,65 +1,174 @@
 #include <vector>
 #include <sstream>
 #include <iostream>
+#include <cstdlib>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 #include <inttypes.h>
 
-#define MAX(a,b) (a<b ? b : a)
+#define __MAX(a,b) (a<b ? b : a)
 
-template <typename T>
-class bignum
+#if __GNUC__
+# if __x86_64__
+#  ifndef BN_B
+#   define BN_B 1000000000000000000ULL
+#   define BN_E 18
+#   define BN_T uint64_t
+#  endif
+# else
+# endif
+#endif
+
+#ifndef BN_B
+# define BN_B 100000000UL
+# define BN_E 8
+# define BN_T uint32_t
+#endif
+
+namespace mandor
 {
-public:
-  bignum(const std::vector<T> &ds) :
-    _digits(ds),
-    _base(std::numeric_limits<T>::max())
+
+  template <typename T>
+  class bignum_base
   {
-    if (! std::numeric_limits<T>::is_modulo)
-      throw(std::runtime_error("modular arithmetic needed"));
-    if (std::numeric_limits<T>::is_signed)
-      throw(std::runtime_error("unsigned number needed"));
-    if (! std::numeric_limits<T>::is_integer)
-      throw(std::runtime_error("integer number required"));
-  }
-
-  bignum(const bignum<T> &a) :
-    _digits(a._digits),
-    _base(a._base)
-  {}
-
-  ~bignum()
-  {}
-
-  bignum<T> operator+(const bignum<T> &o) const
-  {
-    std::vector<T> cdigits;
-    int k;
-    int la  = _digits.size();
-    int lb  = o._digits.size();
-    int l   = MAX(la, lb);
-    T carry = 0;
-    for (k=0; k<l; k++)
+  public:
+    bignum_base(const std::vector<T> &ds, T base) :
+      _digits(ds),
+      _base(base)
     {
-      T a = (k<la ? _digits[k]   : 0);
-      T b = (k<lb ? o._digits[k] : 0);
-      T d = a + b + carry;
-      cdigits.push_back(d);
-      carry = (d>=a && d>=b) ? 0 : 1;
+      if (! std::numeric_limits<T>::is_modulo)
+        throw(std::runtime_error("modular arithmetic needed"));
+      if (std::numeric_limits<T>::is_signed)
+        throw(std::runtime_error("unsigned number needed"));
+      if (! std::numeric_limits<T>::is_integer)
+        throw(std::runtime_error("integer number required"));
     }
-    if (carry)
-      cdigits.push_back(carry);
-    return(bignum<T>(cdigits));
-  }
 
-  bignum<T> &operator=(const bignum<T> &a)
+    bignum_base(const bignum_base<T> &a) :
+      _digits(a._digits),
+      _base(a._base)
+    {}
+
+    virtual ~bignum_base() = 0;
+
+    inline
+    int size() const
+    { return(_digits.size()); }
+
+    inline
+    const T &digit(const int &k) const
+    { return(_digits[k]); }
+
+    inline
+    void sum(bignum_base<T> &r, const bignum_base<T> &o) const
+    {
+      if (_base != o._base)
+        throw(std::runtime_error("numbers must have same base"));
+
+      r._digits.clear();
+      r._base = _base;
+
+      int la  = _digits.size();
+      int lb  = o._digits.size();
+      int l   = __MAX(la, lb);
+      T carry = 0;
+      for (int k=0; k<l; k++)
+      {
+        T a = (k<la ? _digits[k]   : 0);
+        T b = (k<lb ? o._digits[k] : 0);
+        T d = (a + (b + carry)) % _base;
+        r._digits.push_back(d);
+        carry = (d>=a && d>=(b+carry)) ? 0 : 1;
+      }
+      if (carry)
+        r._digits.push_back(carry);
+    }
+
+    virtual bignum_base<T> &operator=(const bignum_base<T> &a)
+    {
+      this->_digits = a._digits;
+      this->_base   = a._base;
+      return(*this);
+    }
+
+  protected:
+    inline
+    void append(const T &d)
+    { _digits.push_back(d); }
+
+  private:
+    std::vector<T> _digits;
+    T _base;
+  };
+
+  template <typename T> inline
+  bignum_base<T>::~bignum_base()
+  {}
+
+  class bignum : public bignum_base<BN_T>
   {
-    this->_digits = a._digits;
-    this->_base   = a._base;
-    return(*this);
-  }
+  public:
+    bignum() :
+      bignum_base<BN_T>(std::vector<BN_T>(), BN_B)
+    {}
 
-private:
-  std::vector<T> _digits;
-  T _base;
-};
+    bignum(const std::string &s) :
+      bignum_base<BN_T>(std::vector<BN_T>(), BN_B)
+    { from_string(s); }
+
+    bignum(const bignum &o) :
+      bignum_base<BN_T>(o)
+    {}
+
+    virtual ~bignum()
+    {}
+
+    virtual bignum &operator=(const bignum_base<BN_T> &a)
+    {
+      static_cast<bignum_base<BN_T>*>(this)->operator=(a);
+      return(*this);
+    }
+
+    bignum operator+(const bignum &o)
+    {
+      bignum r;
+      sum(r, o);
+      return(r);
+    }
+
+    void tostring(std::ostringstream &s) const
+    {
+      s.fill('0');
+      int l = size();
+      for (int k=l; k>0; k-=1)
+      {
+        if (k==l)
+          s.width(0);
+        else
+          s.width(BN_E);
+        s << std::right;
+        s << digit(k-1);
+      }
+    }
+
+    std::string tostring_() const
+    {
+      std::ostringstream s;
+      tostring(s);
+      return(s.str());
+    }
+
+    void from_string(const std::string &n)
+    {
+      for (int k_=n.size(); k_>0; k_-=BN_E)
+      {
+        int f = __MAX(k_ - BN_E, 0);
+        int t = (k_-BN_E<0 ? k_%BN_E : BN_E);
+        append(std::strtoull(n.substr(f, t).c_str(), 0, 10));
+      }
+    }
+
+  };
+
+}
