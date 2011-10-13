@@ -2,35 +2,48 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 module SS.AI.Frontier.Fifo
-       ( FifoF()
-       , fifoEmpty
+       ( Fifo()
+       , empty
        ) where
 
-import SS.AI.Frontier
-import qualified SS.Queue.Fifo as Q
+import Prelude hiding (null)
+import Data.Maybe (fromJust)
+import qualified SS.AI.Frontier as F
+import qualified Data.Map as M
 
-newtype FifoF a = FifoF { unFifo :: Q.Fifo a }
+newtype Fifo a = Fifo { unPack :: M.Map Int a }
+                 deriving (Show)
 
-fifoEmpty :: FifoF a
-fifoEmpty = FifoF Q.empty
+empty :: Fifo a
+empty = Fifo M.empty
 
-fifoInsert :: a -> FifoF a -> FifoF a
-fifoInsert a = FifoF . Q.insert a . unFifo
+fromList :: [a] -> Fifo a
+fromList = foldl (flip insert) empty
 
-fifoSelect :: FifoF a -> (a, FifoF a)
-fifoSelect q = let (a, x) = Q.minView (unFifo q)
-               in (a, FifoF x)
+null :: Fifo a -> Bool
+null = M.null . unPack
 
-fifoMember :: (a -> Bool) -> FifoF a -> Bool
-fifoMember f = Q.memberBy f . unFifo
+singleton :: a -> Fifo a
+singleton = Fifo . M.singleton 0
 
-fifoNull :: FifoF a -> Bool
-fifoNull = Q.null . unFifo
+insert :: a  -> Fifo a -> Fifo a
+insert a (Fifo m) 
+  | M.null m  = singleton a
+  | otherwise = let (k,_) = M.findMax m
+                in Fifo $ M.insert (k+1) a m
 
-instance Frontier FifoF a where
+minView :: Fifo a -> (a, Fifo a)
+minView q = fromJust $ do { (a, m) <- M.minView (unPack q)
+                          ; return (a, Fifo m)
+                          }
 
-  empty     = fifoEmpty
-  insert    = fifoInsert
-  select    = fifoSelect
-  null      = fifoNull
-  member    = fifoMember
+memberBy :: (a -> Bool) -> Fifo a -> Bool
+memberBy f q = foldr (\a b -> f (snd a) || b) False (M.toList $ unPack q)
+
+instance F.Frontier Fifo a where
+
+  empty     = empty
+  insert    = insert
+  select    = minView
+  null      = null
+  member    = memberBy

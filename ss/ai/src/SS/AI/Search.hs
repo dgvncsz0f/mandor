@@ -17,7 +17,7 @@ data Problem s a c = Problem { initial  :: s
                              }
 
 bfs :: (Ord s) => Problem s a c -> P.Path s a
-bfs p = let frontier = F.insert (P.root (initial p)) fifoEmpty
+bfs p = let frontier = F.insert (P.root (initial p)) empty
             explored = S.empty
         in evalState (solveGraphSearch p) (frontier, explored)
 
