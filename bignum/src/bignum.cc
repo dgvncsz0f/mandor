@@ -12,8 +12,8 @@
 #if __GNUC__
 # if __x86_64__
 #  ifndef BN_B
-#   define BN_B 1000000000000000000ULL
-#   define BN_E 18
+#   define BN_B 1000000000UL
+#   define BN_E 9
 #   define BN_T uint64_t
 #  endif
 # else
@@ -21,8 +21,8 @@
 #endif
 
 #ifndef BN_B
-# define BN_B 100000000UL
-# define BN_E 8
+# define BN_B 10000UL
+# define BN_E 4
 # define BN_T uint32_t
 #endif
 
@@ -33,19 +33,10 @@ namespace mandor
   class bignum_base
   {
   public:
-    bignum_base(const std::vector<T> &ds, T base) :
-      _digits(ds),
-      _base(base)
+    static
+    bignum_base<T> zero(T base)
     {
-      if (! std::numeric_limits<T>::is_modulo)
-        throw(std::runtime_error("modular arithmetic needed"));
-      if (std::numeric_limits<T>::is_signed)
-        throw(std::runtime_error("unsigned number needed"));
-      if (! std::numeric_limits<T>::is_integer)
-        throw(std::runtime_error("integer number required"));
-      // make sure addition will not overflow
-      if ((_base-1) > (std::numeric_limits<T>::max()-_base))
-        throw(std::runtime_error("2base must not exceed T_max [addition]"));
+      return(bignum_base<T>(std::vector<T>(), base));
     }
 
     bignum_base(const bignum_base<T> &a) :
@@ -53,7 +44,8 @@ namespace mandor
       _base(a._base)
     {}
 
-    virtual ~bignum_base() = 0;
+    virtual ~bignum_base()
+    {}
 
     inline
     int size() const
@@ -64,14 +56,45 @@ namespace mandor
     { return(_digits[k]); }
 
     inline
+    void mul(bignum_base<T> &r, const bignum_base<T> &o) const
+    {
+      o._checkbase(_base);
+
+      r._base = _base;
+      int la  = _digits.size();
+      int lb  = o._digits.size();
+      T carry = 0;
+      bignum_base<T> tmp0 = bignum_base<T>::zero(_base);
+      bignum_base<T> tmp1 = bignum_base<T>::zero(_base);
+      for (int k=0; k<lb; k+=1)
+      {
+        r._digits.clear();
+        tmp0._digits.clear();
+        tmp1._digits.clear();
+
+        T digit = o._digits[k];
+        for (int j=0; j<la; j+=1)
+        {
+          for (int z=0; z<k; z+=1)
+            tmp0._digits.push_back(0);
+          T t   = digit * _digits[j] + carry;
+          T d   = t % _base;
+          carry = std::floor(t / _base);
+          tmp0._digits.push_back(d);
+        }
+        tmp1 = r;
+        tmp1.plus(r, tmp0);
+      }
+      if (carry)
+        r._digits.push_back(carry);
+    }
+
+    inline
     void plus(bignum_base<T> &r, const bignum_base<T> &o) const
     {
-      if (_base != o._base)
-        throw(std::runtime_error("numbers must have same base"));
-
-      r._digits.clear();
+      o._checkbase(_base);
+        
       r._base = _base;
-
       int la  = _digits.size();
       int lb  = o._digits.size();
       int l   = __MAX(la, lb);
@@ -100,6 +123,24 @@ namespace mandor
     }
 
   protected:
+    bignum_base(const std::vector<T> &ds, T base) :
+      _digits(ds),
+      _base(base)
+    {
+      if (! std::numeric_limits<T>::is_modulo)
+        throw(std::runtime_error("modular arithmetic needed"));
+      if (std::numeric_limits<T>::is_signed)
+        throw(std::runtime_error("unsigned number needed"));
+      if (! std::numeric_limits<T>::is_integer)
+        throw(std::runtime_error("integer number required"));
+      // make sure addition will not overflow
+      if (_base >= (std::numeric_limits<T>::max()-_base))
+        throw(std::runtime_error("base*2 must not exceed T_max [addition]"));
+      // make sure multiplication will not overflow
+      if (std::ceil(sqrt(_base)) >= std::numeric_limits<T>::max())
+        throw(std::runtime_error("base^2 must not exceed T_max [multiplication]"));
+    }
+
     inline
     void append(const T &d)
     { _digits.push_back(d); }
@@ -108,11 +149,13 @@ namespace mandor
     // LITTLE ENDIAN
     std::vector<T> _digits;
     T _base;
-  };
 
-  template <typename T> inline
-  bignum_base<T>::~bignum_base()
-  {}
+    void _checkbase(const T &b) const
+    {
+      if (b != _base)
+        throw(std::runtime_error("numbers must have same base"));
+    }
+  };
 
   class bignum : public bignum_base<BN_T>
   {
@@ -142,6 +185,13 @@ namespace mandor
     {
       bignum r;
       plus(r, o);
+      return(r);
+    }
+
+    bignum operator*(const bignum &o) const
+    {
+      bignum r;
+      mul(r, o);
       return(r);
     }
 
@@ -182,4 +232,15 @@ namespace mandor
 
   };
 
+}
+
+int main(int argc, char *argv[])
+{
+  using namespace mandor;
+  bignum a(argv[1]);
+  bignum b(argv[2]);
+  bignum sum = a + b;
+  bignum mul = a * b;
+  std::cout << argv[1] << " + " << argv[2] << " = " << sum.tostring_() << std::endl;
+  std::cout << argv[1] << " * " << argv[2] << " = " << mul.tostring_() << std::endl;
 }

@@ -9,3 +9,7 @@
 ** bf
 
    Simple brainfuck interpreter.
+
+** ss
+
+   Studying support: ai and ml classes
