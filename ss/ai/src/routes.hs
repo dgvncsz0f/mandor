@@ -17,5 +17,6 @@ main :: IO ()
 main = do { a <- prompt "From: "
           ; b <- prompt "To: "
           ; putStrLn $ "[bfs] "++ a ++ " -> " ++ b ++ " = " ++ (show $ S.bfs (fromTo a b))
+          ; putStrLn $ "[dfs] "++ a ++ " -> " ++ b ++ " = " ++ (show $ S.dfs (fromTo a b))
           }
   where prompt s = putStr s >> hFlush stdout >> getLine

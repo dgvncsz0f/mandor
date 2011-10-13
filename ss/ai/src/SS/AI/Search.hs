@@ -1,13 +1,18 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
-module SS.AI.Search where
+module SS.AI.Search
+       ( Problem(..)
+       , bfs
+       , dfs
+       ) where
 
 import Control.Monad
 import Control.Monad.State
 import qualified Data.Set as S
 import qualified SS.AI.Path as P
 import qualified SS.AI.Frontier as F
-import SS.AI.Frontier.Fifo
+import qualified SS.AI.Frontier.Fifo as Fifo
+import qualified SS.AI.Frontier.Stack as Stack
 
 data Problem s a c = Problem { initial  :: s
                              , actions  :: s -> [a]
@@ -17,7 +22,12 @@ data Problem s a c = Problem { initial  :: s
                              }
 
 bfs :: (Ord s) => Problem s a c -> P.Path s a
-bfs p = let frontier = F.insert (P.root (initial p)) empty
+bfs p = let frontier = F.insert (P.root (initial p)) Fifo.empty
+            explored = S.empty
+        in evalState (solveGraphSearch p) (frontier, explored)
+
+dfs :: (Ord s) => Problem s a c -> P.Path s a
+dfs p = let frontier = F.insert (P.root (initial p)) Stack.empty
             explored = S.empty
         in evalState (solveGraphSearch p) (frontier, explored)
 

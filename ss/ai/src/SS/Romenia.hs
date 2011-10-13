@@ -71,7 +71,7 @@ trd (_,_,c) = c
 mkUoEdge :: String -> String -> c -> [(Node, Node, c)]
 mkUoEdge c0 c1 cost = let ci0 = findByCity c0
                           ci1 = findByCity c1
-                      in [(ci0, ci1, cost), (ci1, ci0, cost)]
+                      in [(ci0, ci1, cost)]
 
 graph :: Gr String Int
 graph = mkGraph cities routes
